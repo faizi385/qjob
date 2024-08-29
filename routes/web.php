@@ -18,3 +18,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 Route::get('/add-contact', [ContactController::class, 'store']);
+
+Route::get('contacts/export', [ContactController::class, 'export'])->name('contacts.export');
+Route::post('contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+
+Route::get('contacts', function () {
+    return view('contacts');
+});
