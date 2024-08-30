@@ -18,6 +18,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 Route::get('/add-contact', [ContactController::class, 'store']);
+Route::post('/import', [ContactController::class, 'import'])->name('import');
 
 Route::get('contacts/export', [ContactController::class, 'export'])->name('contacts.export');
 Route::post('contacts/import', [ContactController::class, 'import'])->name('contacts.import');

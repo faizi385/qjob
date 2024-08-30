@@ -1,72 +1,73 @@
 <?php
-
 namespace App\Jobs;
 
-use App\Models\Contact;
 use App\Imports\ContactsImport;
+use App\Models\Contact;
 use Illuminate\Bus\Queueable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
 class ImportContactsJob implements ShouldQueue
 {
-    use InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $file;
+    protected $filePath;
 
-    public function __construct($file)
+    public function __construct($filePath)
     {
-        $this->file = $file;
+        $this->filePath = $filePath;
     }
 
     public function handle()
     {
         $import = new ContactsImport();
-        $invalidRows = [];
         $validRows = [];
+        $invalidRows = [];
 
         try {
-            DB::beginTransaction();
+            Log::info('Processing file: ' . $this->filePath);
 
-            Excel::import($import, $this->file);
+            // Import the file
+            Excel::import($import, $this->filePath);
 
+            Log::info('Rows imported: ' . json_encode($import->getRows()));
+
+            // Validate and categorize rows
             foreach ($import->getRows() as $row) {
                 $rowArray = $row->toArray();
 
-                $validator = Validator::make($rowArray, [
-                    'name'  => 'required|string|max:255',
-                    'email' => 'required|email',
-                    'phone' => 'nullable|numeric',
-                ]);
+                // Logging each row
+                Log::info('Processing row: ' . json_encode($rowArray));
 
-                if ($validator->fails()) {
-                    $invalidRows[] = ['row' => $rowArray, 'errors' => $validator->errors()->all()];
-                } else {
+                if ($import->validateRow($rowArray)) {
                     $validRows[] = $rowArray;
+                } else {
+                    $invalidRows[] = ['row' => $rowArray, 'errors' => ['Validation failed']];
                 }
             }
 
+        
             if ($invalidRows) {
-                DB::rollback();
-                Log::info('Contacts imported with some errors.', ['errors' => $invalidRows]);
-                return;
+                Log::error('Invalid rows: ' . json_encode($invalidRows));
             }
 
-            Contact::insert(array_map(fn($row) => [
-                'name'  => $row['name'],
-                'email' => $row['email'],
-                'phone' => $row['phone'],
-            ], $validRows));
+   
+            if (!empty($validRows)) {
+                Contact::insert(array_map(fn($row) => [
+                    'name'  => $row['name'],
+                    'email' => $row['email'],
+                    'phone' => $row['phone'],
+                ], $validRows));
 
-            DB::commit();
-
+                Log::info('Contacts inserted successfully.');
+            } else {
+                Log::info('No valid rows to insert.');
+            }
         } catch (\Throwable $e) {
-            DB::rollback();
             Log::error('Import failed: ' . $e->getMessage());
         }
     }

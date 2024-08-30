@@ -21,64 +21,22 @@ class ContactController extends Controller
 
         return response()->json(['message' => 'Contact job dispatched successfully!']);
     }
-
-
-
-    
     public function import(Request $request)
     {
-       
         $request->validate([
-            'contacts_file' => 'required|file|mimes:xlsx,xls',
+            'contacts_file' => 'required|file|mimes:xlsx,xls,csv'
         ]);
     
-        $import = new ContactsImport();
+        Excel::import(new ContactsImport, $request->file('contacts_file'));
     
-        try {
-            DB::beginTransaction(); 
-    
-            Excel::import($import, $request->file('contacts_file'));
-    
-            $invalidRows = [];
-            $validRows = [];
-    
-      
-            foreach ($import->getRows() as $row) {
-                $rowArray = $row->toArray(); 
-    
-             
-                $validator = $import->validateRow($rowArray);
-    
-                if ($validator->fails()) {
-                    $invalidRows[] = ['row' => $rowArray, 'errors' => $validator->errors()->all()];
-                } else {
-                    $validRows[] = $rowArray;
-                }
-            }
-    
-
-            if ($invalidRows) {
-                DB::rollback(); 
-                return response()->json(['message' => 'Contacts imported with some errors.', 'errors' => $invalidRows], 400);
-            }
-    
-            Contact::insert(array_map(fn($row) => [
-                'name'  => $row['name'],
-                'email' => $row['email'],
-                'phone' => $row['phone'],
-            ], $validRows));
-    
-            DB::commit(); 
-    
-            return response()->json(['message' => 'Contacts imported successfully!']);
-        } catch (\Throwable $e) { 
-            DB::rollback();
-            Log::error('Import failed: ' . $e->getMessage());
-    
-      
-            return response()->json(['error' => 'Failed to import contacts: ' . $e->getMessage()], 400);
+        if (session()->has('missing_rows')) {
+            return redirect()->back()->with('warning', 'Some rows were missing required fields and were not imported.');
         }
+    
+        return redirect()->back()->with('success', 'Contacts imported successfully.');
     }
+    
+    
     
 
     public function export()

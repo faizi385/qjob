@@ -2,33 +2,37 @@
 namespace App\Imports;
 
 use App\Models\Contact;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Validator;
-use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Illuminate\Support\Facades\Session;
 
-class ContactsImport implements ToCollection, WithHeadingRow
+class ContactsImport implements ToModel, WithHeadingRow
 {
-    protected $rows = [];
+    protected $requiredFields = ['name', 'email', 'phone'];
+    protected $missingRows = [];
 
-    public function collection(Collection $rows)
+    public function model(array $row)
     {
-        $this->rows = $rows;
+        $missingFields = array_diff($this->requiredFields, array_keys($row));
+
+        if (empty($missingFields)) {
+            return new Contact([
+                'name'  => $row['name'],
+                'email' => $row['email'],
+                'phone' => $row['phone'],
+            ]);
+        }
+
+        // Store information about the row with missing fields
+        $this->missingRows[] = $row;
+        return null; // Skip this row
     }
 
-    public function getRows()
+    public function __destruct()
     {
-        return $this->rows;
-    }
-
-    public function validateRow(array $row)
-    {
-        $validator = Validator::make($row, [
-            'name'  => 'required|string|max:255',
-            'email' => 'required|email',
-            'phone' => 'nullable|numeric',
-        ]);
-
-        return $validator;
+        // Store the missing rows in the session when the import is finished
+        if (!empty($this->missingRows)) {
+            Session::flash('missing_rows', $this->missingRows);
+        }
     }
 }
